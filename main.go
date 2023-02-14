@@ -287,7 +287,6 @@ func main() {
 	}
 
 	devUser, devPass := credentials()
-	// fmt.Println(devUser, devPass)
 
 	if scriptMode == "c" {
 		fmt.Println("Proceding to load configs")
@@ -304,7 +303,6 @@ func main() {
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 			}
 
-			// fmt.Printf("Connecting: %s\n", d)
 			s, err := netconf.DialSSH(fmt.Sprintf("%s:%s", d, "830"), sshConfig)
 			if err != nil {
 				log.Fatalf("Error connecting: %s", err)
@@ -319,15 +317,12 @@ func main() {
 			}
 			rpcResp := res
 
-			// fmt.Println(rpcResp)
-			// color.Green("Config locked, sending commands..... ")
 			rpcCommand := fmt.Sprintf("<load-configuration action='set' format='text'><configuration-set>%s</configuration-set></load-configuration>", setString)
 			res, err = s.Exec(netconf.RawMethod(rpcCommand))
 			if err != nil {
 				panic(err)
 			}
 			rpcResp = res
-			// color.Green("Config Sent")
 
 			rpcCommand = "<validate><source><candidate/></source></validate>"
 			res, err = s.Exec(netconf.RawMethod(rpcCommand))
@@ -335,7 +330,6 @@ func main() {
 				panic(err)
 			}
 			rpcResp = res
-			// color.Green("Config checked and validated")
 
 			color.Yellow("Config Diff:\n==========================================\n")
 			rpcCommand = "<get-configuration compare='rollback' rollback='0' format='text'/>"
@@ -363,7 +357,6 @@ func main() {
 				color.Green("\nConfig changes have been reverted")
 			} else if confirmCommit == "y" {
 				rpcCommand = fmt.Sprintf("<commit><comment>%s</comment></commit>", inputData.ReferenceData)
-				// fmt.Println(rpcCommand)
 				res, err = s.Exec(netconf.RawMethod(rpcCommand))
 				if err != nil {
 					panic(err)
@@ -372,16 +365,12 @@ func main() {
 				color.Green("\nConfig changes commited")
 			}
 
-			// fmt.Println(rpcResp)
-
 			rpcCommand = fmt.Sprintf("<unlock-configuration/>")
 			res, err = s.Exec(netconf.RawMethod(rpcCommand))
 			if err != nil {
 				panic(err)
 			}
 			rpcResp = res
-			// fmt.Println(rpcResp)
-			// color.Green("Config lock released")
 
 		}
 	} else if scriptMode == "o" {
@@ -414,7 +403,6 @@ func main() {
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 			}
 
-			// fmt.Printf("Connecting: %s\n", d)
 			s, err := netconf.DialSSH(fmt.Sprintf("%s:%s", d, "830"), sshConfig)
 			if err != nil {
 				log.Fatalf("Error connecting: %s", err)
@@ -424,13 +412,11 @@ func main() {
 
 			for _, c := range inputData.CommandList {
 				commandContent := fmt.Sprintf("<command format=\"ascii\">%s</command>", c)
-				// fmt.Println(commandContent)
 
 				res, err := s.Exec(netconf.RawMethod(commandContent))
 				if err != nil {
 					color.Red("There was a problem executing the command, please check your syntax:\n\t%s", c)
 					continue
-					// panic(err)
 				}
 				cmdOutput := commandOutputStripper(res.Data)
 
@@ -447,15 +433,13 @@ func main() {
 						color.Red("problems writing file")
 						fmt.Println(err)
 					}
-					fmt.Println(cmdOutput)
 
-					// s := []byte(cmdOutput)
-					// ioutil.WriteFile(devConfig, s, 0755)
-
-					fmt.Printf("Outputs written to: %s\n\n", outputFile)
 				}
 
 				color.Green(cmdOutput)
+			}
+			if saveOuputs {
+				fmt.Printf("Outputs written to: %s\n", inputData.ReferenceData)
 			}
 
 		}
