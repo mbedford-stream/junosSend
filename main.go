@@ -123,6 +123,8 @@ func ForceSelect(optQuestion, optOne, optTwo string) string {
 		fmt.Print(optQuestion)
 		inputSel, _ := inReader.ReadString('\n')
 		inputSelTrim = strings.Trim(inputSel, "\n")
+		inputSelTrim = strings.Trim(inputSelTrim, "\n\r")
+		inputSelTrim = strings.Trim(inputSelTrim, "\r")
 		if strings.ToLower(inputSelTrim) == optOne || strings.ToLower(inputSelTrim) == optTwo {
 			goodSel = true
 		}
@@ -174,19 +176,29 @@ func commandOutputStripper(input string) string {
 }
 
 func main() {
+	nameStr := "Junos Send"
+	verStr := "0.0.5"
+
 	fmt.Println("Hello there, I'm here to help you load Juniper configs.")
 
 	var operationSelect string
 	var commandsFile string
 	var showDiffs bool
 	var saveOuputs bool
+	var printVer bool
 
 	flag.StringVar(&operationSelect, "m", "s", "Choose the mode the script will operate in; Config(c), Operational(o), Select interactively(s)")
 	flag.StringVar(&commandsFile, "f", "./example.json", "Location of input file")
 	flag.BoolVar(&showDiffs, "d", true, "Show the resulting diff from any config commands")
 	flag.BoolVar(&saveOuputs, "s", false, "Save the replies from Op commands to text files")
+	flag.BoolVar(&printVer, "v", false, "Print script version")
 
 	flag.Parse()
+
+	if printVer {
+		color.Green("%s\nVer: %s", nameStr, verStr)
+		os.Exit(0)
+	}
 
 	operationSelect = strings.ToLower(operationSelect)
 	commandsFile = strings.ToLower(commandsFile)
@@ -213,7 +225,11 @@ func main() {
 
 	file, _ := ioutil.ReadFile(cmdsFile)
 	var inputData cmdDataStruct
-	_ = json.Unmarshal([]byte(file), &inputData)
+	jsonErr := json.Unmarshal([]byte(file), &inputData)
+	if jsonErr != nil {
+		color.Red("There was a problem reading the input file, is it correct JSON?")
+		os.Exit(0)
+	}
 
 	var badIPs []string
 	for _, i := range inputData.DeviceIPs {
@@ -310,10 +326,13 @@ func main() {
 
 			defer s.Close()
 
+			configLocked := true
 			res, err := s.Exec(netconf.RawMethod("<lock-configuration/>"))
 			if err != nil {
 				color.Red("There was a problem locking the configuration, is someone/thing already editing?")
-				panic(err)
+				color.Red("continuing without locking config")
+				configLocked = false
+				// panic(err)
 			}
 			rpcResp := res
 
@@ -327,7 +346,8 @@ func main() {
 			rpcCommand = "<validate><source><candidate/></source></validate>"
 			res, err = s.Exec(netconf.RawMethod(rpcCommand))
 			if err != nil {
-				panic(err)
+				color.Red("There was a problem validating the candidate config and commiting the change may fail.")
+				// panic(err)
 			}
 			rpcResp = res
 
@@ -335,7 +355,8 @@ func main() {
 			rpcCommand = "<get-configuration compare='rollback' rollback='0' format='text'/>"
 			res, err = s.Exec(netconf.RawMethod(rpcCommand))
 			if err != nil {
-				panic(err)
+				color.Red("Config changes could not be compared, please check the device manually.")
+				// panic(err)
 			}
 			rpcResp = res
 
@@ -351,7 +372,8 @@ func main() {
 				rpcCommand = "<discard-changes/>"
 				res, err = s.Exec(netconf.RawMethod(rpcCommand))
 				if err != nil {
-					panic(err)
+					color.Red("Config changes could not be rolled back, please check the device and rollback manually.")
+					// panic(err)
 				}
 				rpcResp = res
 				color.Green("\nConfig changes have been reverted")
@@ -359,18 +381,22 @@ func main() {
 				rpcCommand = fmt.Sprintf("<commit><comment>%s</comment></commit>", inputData.ReferenceData)
 				res, err = s.Exec(netconf.RawMethod(rpcCommand))
 				if err != nil {
-					panic(err)
+					color.Red("Config changes could not be committed, please check the device and rollback manually.")
+					// panic(err)
 				}
 				rpcResp = res
 				color.Green("\nConfig changes commited")
 			}
 
-			rpcCommand = fmt.Sprintf("<unlock-configuration/>")
-			res, err = s.Exec(netconf.RawMethod(rpcCommand))
-			if err != nil {
-				panic(err)
+			if configLocked {
+				rpcCommand = fmt.Sprintf("<unlock-configuration/>")
+				res, err = s.Exec(netconf.RawMethod(rpcCommand))
+				if err != nil {
+					color.Red("Config could not be unlocked, is there an existing session?")
+					// panic(err)
+				}
+				rpcResp = res
 			}
-			rpcResp = res
 
 		}
 	} else if scriptMode == "o" {
@@ -439,7 +465,7 @@ func main() {
 				color.Green(cmdOutput)
 			}
 			if saveOuputs {
-				fmt.Printf("Outputs written to: %s\n", inputData.ReferenceData)
+				fmt.Printf("Outputs written to: %s/%s\n", inputData.ReferenceData, strings.Replace(d, ".", "_", -1))
 			}
 
 		}
